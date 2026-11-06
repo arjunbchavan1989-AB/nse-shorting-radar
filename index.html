@@ -1,0 +1,647 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NSE Shorting Radar — F&O Short Screener</title>
+<meta name="description" content="Daily short-selling screener for NSE F&O stocks: parabolic exhaustion, 50-DMA breaks, wedging rallies, bear stacks and distribution — framework of Gil Morales, Qullamaggie, Martin Luk and Simon Russo.">
+<link rel="preconnect" href="https://api.fontshare.com">
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@400,500,700,900&f[]=jetbrains-mono@400,600,800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #0a0e14; --panel: #10151d; --panel2: #151b25; --border: #1e2633;
+  --text: #dbe2ec; --muted: #8b96a5; --faint: #5a6472;
+  --accent: #4f8cff; --accent-soft: rgba(79,140,255,.12);
+  --up: #2fbf71; --up-soft: rgba(47,191,113,.12);
+  --down: #f2555a; --down-soft: rgba(242,85,90,.12);
+  --gold: #e8b64c; --gold-soft: rgba(232,182,76,.12);
+  --divider: #1a212c; --radius: 12px;
+  font-family: 'Satoshi', system-ui, sans-serif;
+}
+html[data-theme="light"] {
+  --bg: #f3f5f9; --panel: #ffffff; --panel2: #f7f9fc; --border: #dde3ec;
+  --text: #17202b; --muted: #5b6675; --faint: #98a2b3;
+  --accent: #2f6fe0; --accent-soft: rgba(47,111,224,.10);
+  --up: #149a52; --up-soft: rgba(20,154,82,.10);
+  --down: #d63a40; --down-soft: rgba(214,58,64,.10);
+  --gold: #b8860b; --gold-soft: rgba(184,134,11,.12);
+  --divider: #e6eaf1;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { background: var(--bg); color: var(--text); min-height: 100vh; }
+.mono { font-family: 'JetBrains Mono', monospace; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.wrap { max-width: 1320px; margin: 0 auto; padding: 20px 18px 40px; }
+
+/* header */
+.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 6px; }
+.logo { display: flex; align-items: center; gap: 12px; }
+.logo-mark {
+  width: 38px; height: 38px; border-radius: 10px; background: var(--down-soft);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 900; color: var(--down);
+}
+h1 { font-size: 20px; font-weight: 900; letter-spacing: -.3px; }
+.sub { font-size: 12px; color: var(--faint); margin-top: 2px; }
+.tabs { display: flex; gap: 6px; margin-left: auto; }
+.tab {
+  padding: 8px 16px; border-radius: 9px; border: 1px solid var(--border);
+  background: transparent; color: var(--muted); font: 700 13px 'Satoshi', sans-serif;
+  cursor: pointer; transition: all .15s;
+}
+.tab.on { background: var(--accent-soft); color: var(--accent); border-color: var(--accent); }
+.theme-btn {
+  margin-left: 8px; width: 34px; height: 34px; border-radius: 9px; border: 1px solid var(--border);
+  background: var(--panel); color: var(--muted); cursor: pointer; font-size: 15px;
+}
+.updated { font-size: 11.5px; color: var(--faint); margin: 4px 0 14px; }
+
+/* market regime banner */
+.regime {
+  display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+  background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--accent);
+  border-radius: var(--radius); padding: 12px 16px; margin-bottom: 14px;
+}
+.regime.bear { border-left-color: var(--down); }
+.regime.warn { border-left-color: var(--gold); }
+.regime .badge {
+  font-size: 10.5px; font-weight: 900; letter-spacing: 1px; padding: 4px 10px;
+  border-radius: 6px; background: var(--down-soft); color: var(--down); white-space: nowrap;
+}
+.regime.warn .badge { background: var(--gold-soft); color: var(--gold); }
+.regime .txt { font-size: 13.5px; font-weight: 700; }
+.regime .stats { display: flex; gap: 14px; margin-left: auto; flex-wrap: wrap; }
+.regime .stats span { font-size: 11.5px; color: var(--muted); }
+.regime .stats b { color: var(--text); }
+
+/* KPIs */
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+.kpi { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; }
+.kpi .v { font-size: 21px; font-weight: 800; }
+.kpi .l { font-size: 10.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .7px; margin-top: 3px; }
+.kpi.d .v { color: var(--down); } .kpi.g .v { color: var(--gold); }
+
+/* controls */
+.controls { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 12px 14px; margin-bottom: 14px; }
+.controls-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+.controls-row + .controls-row { margin-top: 10px; }
+input[type=text], select {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+  padding: 8px 12px; font-size: 13px; outline: none; font-family: inherit;
+}
+input[type=text]:focus, select:focus { border-color: var(--accent); }
+input[type=text] { min-width: 200px; }
+label.check { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; color: var(--muted); cursor: pointer; white-space: nowrap; }
+label.check input { accent-color: var(--accent); }
+button.copybtn {
+  background: var(--panel2); border: 1px solid var(--border); color: var(--text); border-radius: 8px;
+  padding: 8px 14px; font-size: 12.5px; font-weight: 700; cursor: pointer; white-space: nowrap;
+  font-family: inherit; transition: border-color .15s, color .15s;
+}
+button.copybtn:hover { border-color: var(--accent); color: var(--accent); }
+button.copybtn.copied { border-color: var(--up); color: var(--up); }
+.count-note { font-size: 12px; color: var(--faint); margin-left: auto; }
+.seg { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+.seg button {
+  padding: 8px 14px; background: transparent; color: var(--muted); border: none; cursor: pointer;
+  font: 700 12.5px 'Satoshi', sans-serif;
+}
+.seg button.on { background: var(--accent-soft); color: var(--accent); }
+
+/* table */
+.table-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.tbl-scroll { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; }
+thead th {
+  position: sticky; top: 0; background: var(--panel2); z-index: 2;
+  padding: 10px 12px; text-align: right; font-size: 10.5px; text-transform: uppercase;
+  letter-spacing: .7px; color: var(--muted); white-space: nowrap; cursor: pointer;
+  border-bottom: 1px solid var(--border);
+}
+thead th:first-child, thead th.sticky-col { text-align: left; }
+thead th.sort-asc::after { content: " ↑"; color: var(--accent); }
+thead th.sort-desc::after { content: " ↓"; color: var(--accent); }
+tbody td { padding: 9px 12px; text-align: right; border-bottom: 1px solid var(--divider); white-space: nowrap; }
+tbody td:first-child { text-align: left; position: sticky; left: 0; background: var(--panel); z-index: 1; }
+tbody tr.row { cursor: pointer; transition: background .12s; }
+tbody tr.row:hover { background: var(--panel2); }
+.sym { font-weight: 800; font-size: 13.5px; }
+.sub { display: block; font-size: 10.5px; color: var(--faint); margin-top: 1px; }
+.pos { color: var(--up); } .neg { color: var(--down); }
+.score-pill {
+  display: inline-flex; align-items: center; justify-content: center; min-width: 34px;
+  padding: 3px 8px; border-radius: 7px; font-weight: 800; font-size: 12.5px;
+}
+.score-hi { background: var(--down-soft); color: var(--down); }
+.score-md { background: var(--gold-soft); color: var(--gold); }
+.score-lo { background: var(--panel2); color: var(--muted); }
+.setup-chip {
+  display: inline-block; font-size: 10px; font-weight: 800; letter-spacing: .4px;
+  padding: 3px 7px; border-radius: 5px; margin: 1px 2px 1px 0; white-space: nowrap;
+}
+.s-hot { background: var(--down-soft); color: var(--down); }
+.s-tek { background: var(--gold-soft); color: var(--gold); }
+.s-str { background: var(--accent-soft); color: var(--accent); }
+.vbar { display: inline-block; vertical-align: middle; height: 6px; border-radius: 3px; margin-left: 6px; }
+.empty { padding: 36px; text-align: center; color: var(--faint); font-size: 13px; display: none; }
+
+/* drawer */
+.veil { position: fixed; inset: 0; background: rgba(0,0,0,.55); z-index: 90; opacity: 0; pointer-events: none; transition: opacity .2s; }
+.veil.open { opacity: 1; pointer-events: auto; }
+.drawer {
+  position: fixed; top: 0; right: -520px; width: 520px; max-width: 94vw; height: 100%; background: var(--panel);
+  border-left: 1px solid var(--border); z-index: 95; transition: right .22s ease; display: flex; flex-direction: column;
+}
+.drawer.open { right: 0; }
+.drawer-head { padding: 16px 18px 12px; border-bottom: 1px solid var(--divider); }
+.drawer-head .t { font-size: 17px; font-weight: 900; display: flex; align-items: center; gap: 10px; }
+.drawer-head .x { margin-left: auto; background: none; border: none; color: var(--faint); font-size: 18px; cursor: pointer; }
+.drawer-body { padding: 16px 18px; overflow-y: auto; flex: 1; }
+.sec-title { font-size: 11px; text-transform: uppercase; letter-spacing: .8px; color: var(--faint); margin: 14px 0 8px; }
+.stat-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+.stat { background: var(--panel2); border: 1px solid var(--border); border-radius: 9px; padding: 8px 10px; }
+.stat .v { font-size: 13px; font-weight: 800; }
+.stat .l { font-size: 9.5px; color: var(--faint); text-transform: uppercase; letter-spacing: .5px; margin-top: 2px; }
+.setup-list { display: flex; flex-direction: column; gap: 8px; }
+.setup-item { background: var(--panel2); border: 1px solid var(--border); border-radius: 9px; padding: 10px 12px; }
+.setup-item .n { font-weight: 800; font-size: 12.5px; color: var(--down); }
+.setup-item .d { font-size: 11.5px; color: var(--muted); margin-top: 3px; line-height: 1.5; }
+.setup-item .who { font-size: 10.5px; color: var(--accent); margin-top: 3px; font-weight: 700; }
+.chart-box { background: var(--panel2); border: 1px solid var(--border); border-radius: 10px; padding: 6px 6px 2px; margin-bottom: 14px; }
+.chart-box svg { display: block; width: 100%; height: auto; }
+.chart-loading { font-size: 12px; color: var(--faint); text-align: center; padding: 28px 0; }
+.drawer-note { font-size: 11.5px; color: var(--faint); margin-top: 12px; line-height: 1.5; }
+
+/* framework tab */
+.framework { display: none; }
+.fw-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-bottom: 16px; }
+.fw-card { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; }
+.fw-card h3 { font-size: 15px; font-weight: 900; margin-bottom: 2px; }
+.fw-card .who { font-size: 11px; color: var(--accent); font-weight: 700; margin-bottom: 10px; }
+.fw-card ul { list-style: none; }
+.fw-card li { font-size: 12.5px; color: var(--muted); padding: 5px 0 5px 16px; position: relative; line-height: 1.5; border-bottom: 1px solid var(--divider); }
+.fw-card li:last-child { border-bottom: none; }
+.fw-card li::before { content: "▸"; position: absolute; left: 0; color: var(--down); }
+.fw-card li b { color: var(--text); }
+.fw-section { background: var(--panel); border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; margin-bottom: 14px; }
+.fw-section h3 { font-size: 14px; font-weight: 900; margin-bottom: 10px; }
+.fw-section table { font-size: 12.5px; }
+.fw-section th { background: var(--panel2); }
+.fw-section td, .fw-section th { text-align: left; padding: 8px 10px; white-space: normal; }
+.fw-section p { font-size: 12.5px; color: var(--muted); line-height: 1.65; margin-bottom: 8px; }
+.fw-section p b { color: var(--text); }
+
+.foot { margin-top: 24px; padding-top: 16px; border-top: 1px solid var(--divider); font-size: 11.5px; color: var(--faint); line-height: 1.65; }
+.foot b { color: var(--muted); }
+@media (max-width: 640px) {
+  .stat-grid { grid-template-columns: 1fr 1fr; }
+  input[type=text] { min-width: 0; flex: 1; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="top">
+    <div class="logo">
+      <div class="logo-mark">▼</div>
+      <div>
+        <h1>NSE Shorting Radar</h1>
+        <div class="sub">F&O short setups · Morales · Qullamaggie · Luk · Russo</div>
+      </div>
+    </div>
+    <div class="tabs">
+      <button class="tab on" id="tabScreen">Screener</button>
+      <button class="tab" id="tabFw">Framework</button>
+    </div>
+    <button class="theme-btn" id="themeBtn" title="Toggle theme">◐</button>
+  </div>
+  <div class="updated" id="updatedNote"></div>
+
+  <!-- ============ SCREENER ============ -->
+  <div id="screen">
+    <div class="regime" id="regimeBox">
+      <span class="badge mono" id="regimeBadge">—</span>
+      <span class="txt" id="regimeTxt"></span>
+      <div class="stats mono" id="regimeStats"></div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="v mono" id="kUniverse">—</div><div class="l">F&O Universe</div></div>
+      <div class="kpi d"><div class="v mono" id="kCand">—</div><div class="l">Short Candidates</div></div>
+      <div class="kpi g"><div class="v mono" id="kPara">—</div><div class="l">Parabolic Setups</div></div>
+      <div class="kpi d"><div class="v mono" id="kDma">—</div><div class="l">50-DMA Breaks</div></div>
+      <div class="kpi d"><div class="v mono" id="kLow">—</div><div class="l">20-Day Low Breaks</div></div>
+    </div>
+
+    <div class="controls">
+      <div class="controls-row">
+        <input type="text" id="q" placeholder="Search symbol / sector…">
+        <select id="sector"></select>
+        <select id="liq" title="Minimum 30-day average traded value">
+          <option value="50000000" selected>Turnover ≥ ₹50 cr</option>
+          <option value="100000000">Turnover ≥ ₹100 cr</option>
+          <option value="250000000">Turnover ≥ ₹250 cr</option>
+        </select>
+        <div class="seg" id="viewSeg">
+          <button data-v="cand" class="on">Candidates</button>
+          <button data-v="all">All F&O</button>
+        </div>
+        <label class="check"><input type="checkbox" id="fPara"> parabolic</label>
+        <label class="check"><input type="checkbox" id="fDma"> 50-DMA break</label>
+        <label class="check"><input type="checkbox" id="fStack"> bear stack</label>
+        <label class="check"><input type="checkbox" id="fDist"> distribution</label>
+        <button id="copyBtn" class="copybtn" title="Copy the symbols currently in view">Copy symbols</button>
+        <span class="count-note mono" id="countNote"></span>
+      </div>
+    </div>
+
+    <div class="table-card">
+      <div class="tbl-scroll">
+        <table>
+          <thead><tr id="theadRow"></tr></thead>
+          <tbody id="tbody"></tbody>
+        </table>
+      </div>
+      <div class="empty" id="emptyMsg">No stocks match the current filters.</div>
+    </div>
+  </div>
+
+  <!-- ============ FRAMEWORK ============ -->
+  <div class="framework" id="fw">
+    <div class="fw-grid">
+      <div class="fw-card">
+        <h3>Gil Morales</h3>
+        <div class="who">O'Neil Disciples · "Short-Selling with the O'Neil Disciples"</div>
+        <ul>
+          <li><b>Rule 1 — market first:</b> short only in a clear bear trend, as early in the cycle as possible. The Nifty regime banner applies this.</li>
+          <li><b>Rule 2 — short former leaders:</b> big winners of the prior bull run, 8-12 weeks off their peak (or immediate LSFB failures).</li>
+          <li><b>Rule 3 — liquidity:</b> only stocks trading big daily value; risk is inversely correlated to liquidity.</li>
+          <li><b>Entry:</b> high-volume break of the 50-day MA; or a wedging rally back into a declining 50-day that fails on volume.</li>
+          <li><b>Climax runs:</b> 3-5 up-days with gaps and the widest daily ranges = distribution; short the first reversal.</li>
+          <li><b>Risk:</b> predetermined stop, cover into panic/weak markets, take 20-30% profit targets, no trailing stops.</li>
+        </ul>
+      </div>
+      <div class="fw-card">
+        <h3>Qullamaggie</h3>
+        <div class="who">Kristjan Kullamägi · Parabolic Short</div>
+        <ul>
+          <li><b>Candidate:</b> up 50-100%+ in days/weeks (large caps) on 3-5+ consecutive up days.</li>
+          <li><b>Never day one</b> of the vertical move — wait for the crack; the amateur shorts get run over.</li>
+          <li><b>Trigger:</b> break of the opening-range low, first red 5-minute candle, or a failed VWAP bounce (first crack → weak bounce → fail).</li>
+          <li><b>Stop:</b> high of the day, or VWAP reclaim.</li>
+          <li><b>Target:</b> cover into the 10/20-day MAs — the "home" these stocks bounce to.</li>
+          <li><b>Risk 0.25-1%</b> per trade; short-only setups, never two-way on the same name.</li>
+        </ul>
+      </div>
+      <div class="fw-card">
+        <h3>Martin Luk</h3>
+        <div class="who">USIC Champion · short-at-resistance framework</div>
+        <ul>
+          <li><b>Short resistance, not breakdowns:</b> higher risk-reward and win rate than chasing breaks.</li>
+          <li><b>Where:</b> declining 21/50 EMAs and declining anchored VWAP when they converge — the first bounce into them is the short.</li>
+          <li><b>23 & 50 EMA > 9 EMA</b> for the shorting zone; the 9 works only as an add.</li>
+          <li><b>Weak stock in a weak sector</b> — never the laggard inside a strong sector.</li>
+          <li><b>Multi-timeframe echo:</b> weekly resistance, daily weakness, 15-min/1-min confirmation (break of reversal-candle low).</li>
+          <li><b>Holds 2-3 days;</b> trim into acceleration; tight stops ~2-3%; risk ~0.5% per trade.</li>
+        </ul>
+      </div>
+      <div class="fw-card">
+        <h3>Simon Russo</h3>
+        <div class="who">Market Wizards: The Next Generation · pseudonym</div>
+        <ul>
+          <li><b>Short parabolic rallies</b> in structurally weak companies — for India: dilution risk (QIP/FPO pipeline), promoter pledge, high cash burn.</li>
+          <li><b>Trigger is capitulation:</b> volume and price both accelerating to extremes — the rubber band about to snap.</li>
+          <li><b>Not picking tops:</b> get short in the vicinity and let risk management do the rest.</li>
+          <li><b>Constant-risk pyramiding:</b> start small, add as the stock rallies against you, lowering the stop so total dollar risk stays flat (~1%).</li>
+          <li><b>Cover into the panic drop</b> — where the buyers are exhausted. Shorts last 1-3 days; longer = warning.</li>
+          <li><b>Broken short = flip long:</b> if it grinds up with no capitulation phase, get out and reassess.</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="fw-section">
+      <h3>Screen tags → trader mapping</h3>
+      <table>
+        <thead><tr><th>Tag</th><th>Trigger (daily data)</th><th>Source</th></tr></thead>
+        <tbody>
+          <tr><td><b>PARABOLIC</b></td><td>+18% in 10 sessions or +30% in 20, with a 3+ day up-streak</td><td>Qullamaggie / Russo</td></tr>
+          <tr><td><b>FIRST CRACK</b></td><td>Parabolic that closed below yesterday and the day before (or faded a gap-up open)</td><td>Qullamaggie</td></tr>
+          <tr><td><b>CLIMAX REV</b></td><td>After a 20% run: red day with 1.5× average range on 2× volume</td><td>Morales / O'Neil</td></tr>
+          <tr><td><b>50-DMA BREAK</b></td><td>First close below the 50-day EMA on ≥1.5× volume</td><td>Morales</td></tr>
+          <tr><td><b>WEDGE RALLY</b></td><td>Below the 200 EMA, bounced 4%+ off the 20-day low on fading volume into a declining 50 EMA</td><td>Morales / Luk</td></tr>
+          <tr><td><b>BOUNCE SELL</b></td><td>Below the 200 EMA, 3%+ bounce from the low into a declining 21 EMA with a 2+ day up-streak</td><td>Martin Luk</td></tr>
+          <tr><td><b>BEAR STACK</b></td><td>9 EMA < 21 EMA < 50 EMA and price below all three</td><td>Martin Luk</td></tr>
+          <tr><td><b>DISTRIBUTION</b></td><td>4+ down days on ≥1.5× volume within 20 sessions</td><td>Morales / O'Neil</td></tr>
+          <tr><td><b>20D LOW BREAK</b></td><td>Close below the lowest close of the prior 20 sessions</td><td>structure</td></tr>
+          <tr><td><b>GAP DOWN</b></td><td>Opened ≥2% below yesterday's close</td><td>structure</td></tr>
+          <tr><td><b>EX-LEADER</b></td><td>35%+ below the 52-week high and below a falling 50 < 200 EMA stack</td><td>Morales / Russo</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="fw-section">
+      <h3>Short score & market regime</h3>
+      <p><b>Score (0-100)</b> = trend structure (below 50 EMA +10, below 200 EMA +10, bear stack +15) + triggered setups (parabolic +15, first crack / climax / 50-DMA break / wedge / bounce +10 each, distribution / low break / gap / ex-leader +5 each, capped) + relative strength vs Nifty over 3 months (≤-10pp +15, ≤-5pp +10, <0 +5) + volume confirmation (≥2× +10, ≥1.5× +5). <b>Candidates</b> = at least one setup tag and 30-day average turnover above the filter.</p>
+      <p><b>Regime (Morales Rule 1):</b> Nifty below both the 50 and 200 EMA = <b>BEAR — shorts favoured</b>; below the 50 only = <b>CORRECTION — short at resistance only</b>; 4+ index distribution days = <b>DISTRIBUTING — prepare the watchlist</b>; otherwise <b>BULL — avoid fresh shorts</b>. The banner at the top of the screener computes this nightly from ^NSEI.</p>
+      <p><b>India execution notes:</b> intraday naked shorts must be squared off same-day unless you borrow via SLB; swing shorts are usually taken via stock futures. Cover costs, carry and squeeze risk before sizing — Russo's constant-risk pyramid only works with a hard stop that survives gap-ups.</p>
+    </div>
+
+    <div class="fw-section">
+      <h3>Sources</h3>
+      <p>Gil Morales & Chris Kacher, <a href="https://www.virtueofselfishinvesting.com/reports/view/market-lab-report-part-4-the-six-essential-rules-of-short-selling-or-for-those-who-dont-short-how-to-identify-prone-patterns-for-a-safe-exit" target="_blank" rel="noopener">The Six Essential Rules of Short-Selling (Virtue of Selfish Investing)</a> and <a href="https://tradingmarkets.com/recent/gil_morales_and_dr_christian_kacher__part_ii-669593" target="_blank" rel="noopener">TradingMarkets interview</a>. Qullamaggie parabolic-short rules per <a href="https://www.snappchart.app/blog/beginner-playbook/qullamaggie-trading-strategy" target="_blank" rel="noopener">Snappchart's Qullamaggie playbook</a> and <a href="https://backtest.click/learn/method-parabolic-short-qullamaggie/" target="_blank" rel="noopener">Backtest.click's parabolic-short method page</a>. Martin Luk's shorting thread on <a href="https://x.com/martinlukkt/status/1905971936137818494" target="_blank" rel="noopener">X (@martinlukkt)</a> and <a href="https://tradingresourcehub.substack.com/p/martin-luk-study-process" target="_blank" rel="noopener">Trading Resource Hub's study notes</a>. Simon Russo per Jack Schwager's <i>Market Wizards: The Next Generation</i> chapter 3, summarised at <a href="https://completetradersedge.com/simon-russo-market-wizards/" target="_blank" rel="noopener">Complete Trader's Edge</a>.</p>
+    </div>
+  </div>
+
+  <div class="foot">
+    <b>Data:</b> NSE F&O universe (218 stocks) · daily OHLCV via Yahoo Finance · auto-refreshed every trading day at 19:00 IST by GitHub Actions.
+    <b>Framework:</b> setup rules quantified from published methodologies of Gil Morales, Kristjan "Qullamaggie" Kullamägi, Martin Luk and Simon Russo (see Framework tab for sources).
+    <b>Disclaimer:</b> research and education only — not investment advice. Shorting carries unlimited-loss risk; F&O positions can gap through stops.
+  </div>
+</div>
+
+<div class="veil" id="veil"></div>
+<div class="drawer" id="drawer">
+  <div class="drawer-head">
+    <div class="t"><span id="dSym" class="mono"></span><span id="dPx" class="mono"></span><button class="x" id="drawerClose">✕</button></div>
+    <div class="sub" id="dSub"></div>
+  </div>
+  <div class="drawer-body" id="dBody"></div>
+</div>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => String.fromCharCode(38) + '#' + c.charCodeAt(0) + ';');
+const fmtCr = v => v >= 1e7 ? (v / 1e7).toFixed(1) + ' cr' : (v / 1e5).toFixed(0) + ' L';
+const fmtPct = (v, sign) => (v > 0 && sign ? '+' : '') + v.toFixed(1) + '%';
+let D = null, HIST = null, view = 'cand', sortKey = 'shortScore', sortDir = -1, lastRows = [];
+
+/* ---------- table ---------- */
+const SETUP_META = {
+  'PARABOLIC':    { cls: 's-hot', txt: 'PARABOLIC' },
+  'FIRST CRACK':  { cls: 's-hot', txt: 'FIRST CRACK' },
+  'CLIMAX REV':   { cls: 's-hot', txt: 'CLIMAX REV' },
+  '50-DMA BREAK': { cls: 's-tek', txt: '50-DMA BREAK' },
+  'WEDGE RALLY':  { cls: 's-tek', txt: 'WEDGE RALLY' },
+  'BOUNCE SELL':  { cls: 's-tek', txt: 'BOUNCE SELL' },
+  'BEAR STACK':   { cls: 's-str', txt: 'BEAR STACK' },
+  'DISTRIBUTION': { cls: 's-str', txt: 'DISTRIBUTION' },
+  '20D LOW BREAK':{ cls: 's-str', txt: '20D LOW BREAK' },
+  'GAP DOWN':     { cls: 's-str', txt: 'GAP DOWN' },
+  'EX-LEADER':    { cls: 's-str', txt: 'EX-LEADER' },
+};
+const COLS = [
+  { k: 'symbol',   label: 'Stock',       get: r => r.symbol, fmt: (v, r) => `<span class="sym mono">${esc(v)}</span><span class="sub">${esc(r.sector || '')}</span>` },
+  { k: 'close',    label: 'Price',       get: r => r.close, fmt: v => '₹' + v.toFixed(2) },
+  { k: 'dayChangePct', label: 'Day %',   get: r => r.dayChangePct, fmt: v => cls(v, (v > 0 ? '+' : '') + v.toFixed(2) + '%') },
+  { k: 'setups',   label: 'Setups',      get: r => r.setups.length, fmt: (v, r) => r.setups.map(s => `<span class="setup-chip ${SETUP_META[s].cls}">${s}</span>`).join('') || '<span style="color:var(--faint)">—</span>' },
+  { k: 'shortScore', label: 'Score',     get: r => r.shortScore, fmt: v => `<span class="score-pill ${v >= 60 ? 'score-hi' : v >= 40 ? 'score-md' : 'score-lo'}">${v}</span>` },
+  { k: 'rs3m',     label: 'RS 3M',       get: r => r.rs3m, fmt: v => cls(v, (v > 0 ? '+' : '') + v.toFixed(1) + 'pp') },
+  { k: 'pctFrom52wHigh', label: 'From 52wH', get: r => r.pctFrom52wHigh, fmt: v => cls(v, v.toFixed(1) + '%') },
+  { k: 'volRatio', label: 'Vol vs 50d',  get: r => r.volRatio, fmt: v => v.toFixed(2) + 'x' + (v >= 2 ? bar(Math.min(v, 5) / 5) : '') },
+  { k: 'avgTurnover30', label: '30d Turnover', get: r => r.avgTurnover30, fmt: v => '₹' + fmtCr(v) },
+];
+function cls(v, s) { return `<span class="${v > 0 ? 'pos' : v < 0 ? 'neg' : ''}">${s}</span>`; }
+function bar(f) { return `<span class="vbar" style="width:${Math.round(28 * f)}px;background:var(--down)"></span>`; }
+
+function passesFilters(r) {
+  const liq = +$('liq').value;
+  if (r.avgTurnover30 < liq) return false;
+  if (view === 'cand' && !r.candidate) return false;
+  const q = $('q').value.trim().toLowerCase();
+  if (q && !(r.symbol.toLowerCase().includes(q) || (r.sector || '').toLowerCase().includes(q))) return false;
+  if ($('sector').value && r.sector !== $('sector').value) return false;
+  if ($('fPara').checked && !r.parabolic) return false;
+  if ($('fDma').checked && !r.setups.includes('50-DMA BREAK')) return false;
+  if ($('fStack').checked && !r.setups.includes('BEAR STACK')) return false;
+  if ($('fDist').checked && !r.setups.includes('DISTRIBUTION')) return false;
+  return true;
+}
+
+function render() {
+  const rows = D.stocks.filter(passesFilters).slice();
+  const col = COLS.find(c => c.k === sortKey) || COLS[4];
+  rows.sort((a, b) => {
+    let va = col.get(a), vb = col.get(b);
+    if (typeof va === 'string') { va = va.toLowerCase(); vb = (vb || '').toLowerCase(); }
+    return (va > vb ? 1 : va < vb ? -1 : 0) * sortDir;
+  });
+  lastRows = rows;
+  $('theadRow').innerHTML = COLS.map((c, i) =>
+    `<th data-i="${i}" class="${sortKey === c.k ? (sortDir === -1 ? 'sort-desc' : 'sort-asc') : ''}">${c.label}</th>`).join('');
+  $('tbody').innerHTML = rows.map(r =>
+    `<tr class="row" data-sym="${esc(r.symbol)}">` +
+    COLS.map(c => `<td>${c.fmt(col.get(r), r)}</td>`).join('') + '</tr>').join('');
+  $('emptyMsg').style.display = rows.length ? 'none' : 'block';
+  $('countNote').textContent = `${rows.length} / ${D.stocks.length} stocks`;
+  document.querySelectorAll('#tbody tr').forEach(tr =>
+    tr.addEventListener('click', () => openDrawer(tr.dataset.sym)));
+}
+
+/* ---------- drawer ---------- */
+const SETUP_DESC = {
+  'PARABOLIC':    ['Qullamaggie / Russo', 'Extended run-up (≥18% in 10 or ≥30% in 20 sessions) on a 3+ day up-streak. Candidate, not an entry — wait for the crack.'],
+  'FIRST CRACK':  ['Qullamaggie', 'Parabolic that closed below the prior two closes or faded a gap-up open — the first sign the move is exhausting.'],
+  'CLIMAX REV':   ['Morales / O\'Neil', 'Red day after a 20%+ run with 1.5× the average daily range on 2× volume — blow-off climax.'],
+  '50-DMA BREAK': ['Morales', 'First close below the 50-day EMA on ≥1.5× volume — institutional distribution.'],
+  'WEDGE RALLY':  ['Morales / Luk', 'Bounce on fading volume into a declining 50 EMA while below the 200 — short-at-resistance zone.'],
+  'BOUNCE SELL': ['Martin Luk', 'Bounce off the low into a declining 21 EMA below the 200 — Luk\'s short-at-resistance entry zone.'],
+  'BEAR STACK':  ['Martin Luk', '9 < 21 < 50 EMA alignment with price below all — downtrend structure intact.'],
+  'DISTRIBUTION': ['Morales / O\'Neil', '4+ down days on ≥1.5× volume in 20 sessions — institutions selling.'],
+  '20D LOW BREAK': ['structure', 'Close below the lowest close of the prior 20 sessions.'],
+  'GAP DOWN':    ['structure', 'Opened ≥2% below the prior close.'],
+  'EX-LEADER':   ['Morales / Russo', '35%+ off the 52-week high below a falling EMA stack — a broken former leader.'],
+};
+function openDrawer(sym) {
+  const r = D.stocks.find(s => s.symbol === sym);
+  if (!r) return;
+  $('dSym').textContent = r.symbol;
+  $('dSub').textContent = `${r.company || ''}${r.sector ? ' · ' + r.sector : ''} · data as of ${D.asOf}`;
+  $('dPx').innerHTML = `₹${r.close.toFixed(2)} &nbsp;${cls(r.dayChangePct, (r.dayChangePct > 0 ? '+' : '') + r.dayChangePct.toFixed(2) + '%')}`;
+  const stat = (v, l) => `<div class="stat"><div class="v mono">${v}</div><div class="l">${l}</div></div>`;
+  $('dBody').innerHTML = `
+    <div class="sec-title">6-Month Chart</div>
+    <div class="chart-box" id="chartBox"><div class="chart-loading">Loading chart…</div></div>
+    <div class="sec-title">Short Score ${r.shortScore}/100</div>
+    <div class="setup-list">
+      ${r.setups.length ? r.setups.map(s => `
+        <div class="setup-item">
+          <div class="n">${s}</div>
+          <div class="d">${SETUP_DESC[s] ? SETUP_DESC[s][1] : ''}</div>
+          <div class="who">— ${SETUP_DESC[s] ? SETUP_DESC[s][0] : ''}</div>
+        </div>`).join('') : '<div class="setup-item"><div class="d">No active setup tags today — check the score components and structure.</div></div>'}
+    </div>
+    <div class="sec-title">Key Stats</div>
+    <div class="stat-grid">
+      ${stat('₹' + r.close.toFixed(2), 'Close')}
+      ${stat((r.dayChangePct > 0 ? '+' : '') + r.dayChangePct.toFixed(2) + '%', 'Day Change')}
+      ${stat('₹' + fmtCr(r.avgTurnover30), '30d Avg Turnover')}
+      ${stat((r.volRatio).toFixed(2) + 'x', 'Vol vs 50d')}
+      ${stat('EMA ' + r.ema50.toFixed(0), '50-Day EMA')}
+      ${stat('EMA ' + r.ema200.toFixed(0), '200-Day EMA')}
+      ${stat('+' + r.runup10.toFixed(1) + '% / +' + r.runup20.toFixed(1) + '%', 'Run 10d / 20d')}
+      ${stat(r.upStreak + 'd', 'Up-Day Streak')}
+      ${stat(r.distDays + '', 'Distribution Days (20d)')}
+      ${stat((r.rs3m > 0 ? '+' : '') + r.rs3m.toFixed(1) + 'pp', 'RS vs Nifty 3M')}
+      ${stat(r.pctFrom52wHigh.toFixed(1) + '%', 'From 52w High')}
+      ${stat('EMA ' + r.ema9.toFixed(0) + ' / ' + r.ema21.toFixed(0), '9 / 21 EMA')}
+    </div>
+    <div class="drawer-note">Framework notes apply — see the Framework tab. Stops are non-negotiable; Morales: decide the stop before entering. Qullamaggie: cover into the 10/20-day MAs. Russo: keep dollar risk constant when pyramiding.</div>`;
+  $('drawer').classList.add('open');
+  $('veil').classList.add('open');
+  loadChart(sym);
+}
+function closeDrawer() { $('drawer').classList.remove('open'); $('veil').classList.remove('open'); }
+
+/* ---------- chart ---------- */
+async function loadChart(sym) {
+  const box = $('chartBox');
+  if (!box) return;
+  try {
+    if (!HIST) HIST = await (await fetch('data/history.json')).json();
+  } catch (e) {
+    box.innerHTML = '<div class="chart-loading">Chart data unavailable.</div>';
+    return;
+  }
+  const h = HIST[sym];
+  if (!h || !h.c || h.c.length < 10) {
+    box.innerHTML = '<div class="chart-loading">No chart data for this stock.</div>';
+    return;
+  }
+  box.innerHTML = candleSVG(h, D.stocks.find(s => s.symbol === sym));
+}
+
+function candleSVG(h, r) {
+  const N = Math.min(126, h.c.length);
+  const s = h.c.length - N;
+  const t = h.t.slice(s), o = h.o.slice(s), hi = h.h.slice(s), lo = h.l.slice(s), c = h.c.slice(s), v = h.v.slice(s);
+  const emaSeries = (span) => {
+    const k = 2 / (span + 1);
+    let e = h.c[0]; const out = [e];
+    for (let i = 1; i < h.c.length; i++) { e = h.c[i] * k + e * (1 - k); out.push(e); }
+    return out.slice(s);
+  };
+  const ema21 = emaSeries(21), ema50 = emaSeries(50);
+  let pMin = Math.min(...lo), pMax = Math.max(...hi);
+  const padP = (pMax - pMin) * 0.06 || 1; pMin -= padP; pMax += padP;
+  const vMax = Math.max(...v, 1);
+  const W = 480, L = 6, R = 46, T = 8, PH = 200, VG = 6, VH = 46;
+  const plotW = W - L - R, Hh = T + PH + VG + VH + 18;
+  const x = i => L + (i + 0.5) * plotW / N;
+  const y = p => T + PH - (p - pMin) / (pMax - pMin) * PH;
+  const bw = Math.max(1.4, plotW / N * 0.62);
+  let g = '';
+  for (let i = 0; i <= 4; i++) {
+    const p = pMin + (pMax - pMin) * i / 4, yy = y(p);
+    g += `<line x1="${L}" y1="${yy}" x2="${L + plotW}" y2="${yy}" stroke="var(--divider)" stroke-width="1"/>`;
+    g += `<text x="${L + plotW + 5}" y="${yy + 3}" font-size="10" fill="var(--faint)">${p >= 1000 ? (p / 1000).toFixed(1) + 'k' : p.toFixed(p < 50 ? 1 : 0)}</text>`;
+  }
+  const vy = T + PH + VG;
+  v.forEach((vv, i) => {
+    const hgt = vv / vMax * VH;
+    g += `<rect x="${(x(i) - bw / 2).toFixed(2)}" y="${(vy + VH - hgt).toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(0.5, hgt).toFixed(2)}" fill="${c[i] >= o[i] ? 'var(--up)' : 'var(--down)'}" opacity="0.4"/>`;
+  });
+  for (let i = 0; i < N; i++) {
+    const up = c[i] >= o[i], col = up ? 'var(--up)' : 'var(--down)';
+    g += `<line x1="${x(i).toFixed(2)}" y1="${y(hi[i]).toFixed(2)}" x2="${x(i).toFixed(2)}" y2="${y(lo[i]).toFixed(2)}" stroke="${col}" stroke-width="1"/>`;
+    const y1 = y(Math.max(o[i], c[i])), y2 = y(Math.min(o[i], c[i]));
+    g += `<rect x="${(x(i) - bw / 2).toFixed(2)}" y="${y1.toFixed(2)}" width="${bw.toFixed(2)}" height="${Math.max(1, y2 - y1).toFixed(2)}" fill="${col}"/>`;
+  }
+  const line = (arr, stroke, dash) => {
+    const path = arr.map((e, i) => `${i ? 'L' : 'M'}${x(i).toFixed(1)},${y(e).toFixed(1)}`).join('');
+    return `<path d="${path}" fill="none" stroke="${stroke}" stroke-width="1.3"${dash ? ' stroke-dasharray="3 3"' : ''}/>`;
+  };
+  g += line(ema50, 'var(--accent)');
+  g += line(ema21, 'var(--gold)', true);
+  const fmt = d => new Date(d * 86400e3).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' });
+  for (let i = 0; i <= 4; i++) {
+    const idx = Math.round((N - 1) * i / 4);
+    g += `<text x="${Math.min(W - R - 8, Math.max(L + 14, x(idx))).toFixed(1)}" y="${Hh - 5}" font-size="10" fill="var(--faint)" text-anchor="middle">${fmt(t[idx])}</text>`;
+  }
+  g += `<text x="${L + 2}" y="${T + 11}" font-size="10" fill="var(--accent)">EMA 50</text>`;
+  g += `<text x="${L + 62}" y="${T + 11}" font-size="10" fill="var(--gold)">EMA 21</text>`;
+  return `<svg viewBox="0 0 ${W} ${Hh}" preserveAspectRatio="xMidYMid meet" role="img" aria-label="6-month candlestick chart">${g}</svg>`;
+}
+
+/* ---------- boot ---------- */
+async function boot() {
+  try {
+    const res = await fetch('data/shorts.json');
+    D = await res.json();
+  } catch (e) {
+    $('updatedNote').textContent = 'Failed to load data.';
+    return;
+  }
+  $('updatedNote').textContent = `Data as of ${D.asOf} · ${D.universeSize} F&O stocks · auto-updated daily 19:00 IST`;
+
+  const m = D.market;
+  $('regimeTxt').textContent = m.regime;
+  const box = $('regimeBox');
+  box.classList.add(m.below50 && m.below200 ? 'bear' : m.below50 || m.distDays >= 4 ? 'warn' : '');
+  $('regimeBadge').textContent = m.below50 && m.below200 ? 'BEAR' : m.below50 ? 'CORRECTION' : m.distDays >= 4 ? 'DISTRIBUTING' : 'BULL';
+  $('regimeStats').innerHTML =
+    `<span>NIFTY <b>${m.niftyClose}</b> ${m.niftyDayPct > 0 ? '+' : ''}${m.niftyDayPct}%</span>` +
+    `<span>52wH <b>${m.pctFrom52wHigh}%</b></span>` +
+    `<span>50 EMA <b>${m.below50 ? 'below' : 'above'}</b></span>` +
+    `<span>200 EMA <b>${m.below200 ? 'below' : 'above'}</b></span>` +
+    `<span>dist days <b>${m.distDays}</b></span>`;
+
+  const k = D.stats;
+  $('kUniverse').textContent = D.universeSize;
+  $('kCand').textContent = k.candidates;
+  $('kPara').textContent = k.parabolic;
+  $('kDma').textContent = k.dmaBreaks;
+  $('kLow').textContent = k.newLows;
+
+  const sectors = [...new Set(D.stocks.map(r => r.sector).filter(Boolean))].sort();
+  $('sector').innerHTML = '<option value="">All sectors</option>' +
+    sectors.map(s => `<option value="${esc(s)}">${esc(s)}</option>`).join('');
+
+  render();
+  $('theadRow').addEventListener('click', e => {
+    const th = e.target.closest('th'); if (!th) return;
+    const c = COLS[+th.dataset.i];
+    if (sortKey === c.k) sortDir *= -1; else { sortKey = c.k; sortDir = -1; }
+    render();
+  });
+  ['q', 'sector', 'liq'].forEach(id => $(id).addEventListener('input', render));
+  ['fPara', 'fDma', 'fStack', 'fDist'].forEach(id => $(id).addEventListener('change', render));
+  $('viewSeg').querySelectorAll('button').forEach(b => b.addEventListener('click', () => {
+    $('viewSeg').querySelectorAll('button').forEach(x => x.classList.remove('on'));
+    b.classList.add('on'); view = b.dataset.v; render();
+  }));
+  $('tabScreen').addEventListener('click', () => { $('tabScreen').classList.add('on'); $('tabFw').classList.remove('on'); $('screen').style.display = ''; $('fw').style.display = 'none'; });
+  $('tabFw').addEventListener('click', () => { $('tabFw').classList.add('on'); $('tabScreen').classList.remove('on'); $('fw').style.display = 'block'; $('screen').style.display = 'none'; });
+  $('veil').addEventListener('click', closeDrawer);
+  $('drawerClose').addEventListener('click', closeDrawer);
+  $('copyBtn').addEventListener('click', async () => {
+    const syms = lastRows.map(r => r.symbol);
+    if (!syms.length) return;
+    const txt = syms.join(', ');
+    let ok = false;
+    try { await navigator.clipboard.writeText(txt); ok = true; } catch (e) {
+      const ta = document.createElement('textarea');
+      ta.value = txt; ta.style.position = 'fixed'; ta.style.opacity = '0';
+      document.body.appendChild(ta); ta.select();
+      try { ok = document.execCommand('copy'); } catch (e2) {}
+      ta.remove();
+    }
+    const b = $('copyBtn');
+    b.classList.add('copied');
+    b.textContent = ok ? `Copied ${syms.length} symbols` : 'Copy failed';
+    setTimeout(() => { b.classList.remove('copied'); b.textContent = 'Copy symbols'; }, 1600);
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') closeDrawer(); });
+  const t = $('themeBtn');
+  t.addEventListener('click', () => {
+    const d = document.documentElement.getAttribute('data-theme') === 'light' ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', d);
+  });
+}
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>
