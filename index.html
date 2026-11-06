@@ -434,7 +434,7 @@ function render() {
     `<th data-i="${i}" class="${sortKey === c.k ? (sortDir === -1 ? 'sort-desc' : 'sort-asc') : ''}">${c.label}</th>`).join('');
   $('tbody').innerHTML = rows.map(r =>
     `<tr class="row" data-sym="${esc(r.symbol)}">` +
-    COLS.map(c => `<td>${c.fmt(col.get(r), r)}</td>`).join('') + '</tr>').join('');
+    COLS.map(c => `<td>${c.fmt(c.get(r), r)}</td>`).join('') + '</tr>').join('');
   $('emptyMsg').style.display = rows.length ? 'none' : 'block';
   $('countNote').textContent = `${rows.length} / ${D.stocks.length} stocks`;
   document.querySelectorAll('#tbody tr').forEach(tr =>
@@ -580,7 +580,8 @@ async function boot() {
   const m = D.market;
   $('regimeTxt').textContent = m.regime;
   const box = $('regimeBox');
-  box.classList.add(m.below50 && m.below200 ? 'bear' : m.below50 || m.distDays >= 4 ? 'warn' : '');
+  const regimeCls = m.below50 && m.below200 ? 'bear' : m.below50 || m.distDays >= 4 ? 'warn' : '';
+  if (regimeCls) box.classList.add(regimeCls);
   $('regimeBadge').textContent = m.below50 && m.below200 ? 'BEAR' : m.below50 ? 'CORRECTION' : m.distDays >= 4 ? 'DISTRIBUTING' : 'BULL';
   $('regimeStats').innerHTML =
     `<span>NIFTY <b>${m.niftyClose}</b> ${m.niftyDayPct > 0 ? '+' : ''}${m.niftyDayPct}%</span>` +
